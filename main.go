@@ -33,13 +33,16 @@ func main() {
 	// fetchData("vipul")
 	counter := 0
 	ctx := context.Background()
+	var search_keyword string
+	fmt.Print("Type the keyword you are interested in : ")
+	fmt.Scan(&search_keyword)
 
 	// take user input of keyword
 	//
 
 	for {
 		log.Println("Explore Search:")
-		keyword := "Go"
+		keyword := search_keyword
 
 		// Fetching best Keywords
 		keywords, err := gogtrends.Search(ctx, keyword, langEn)
@@ -72,9 +75,10 @@ func main() {
 		handleError(err, "Failed in call interest over time")
 		if counter == 0 {
 			// first time, save data and sleep
-			saveData(overTime, filename+"-"+strconv.Itoa(counter), 1)
+			map_1 := make(map[string]float32)
+			saveData(overTime, filename+"-"+strconv.Itoa(counter), map_1, true)
 			counter = counter + 1
-			time.Sleep(1 * time.Minute) // sleep for 10 mins
+			time.Sleep(10 * time.Minute) // sleep for 10 mins
 			continue
 		}
 		if counter > 0 {
@@ -83,13 +87,13 @@ func main() {
 			olddata := fetchData(fn)
 
 			// scaling
-			scale := scaleData(olddata, overTime)
-			log.Println("scaling the data with: ", scale)
+			scaler := scaleData(olddata, overTime)
+			log.Println("scaling the data with: ", scaler)
 
 			// save the current data
-			saveData(overTime, filename+"-"+strconv.Itoa(counter), scale)
+			saveData(overTime, filename+"-"+strconv.Itoa(counter), scaler, false)
 
-			time.Sleep(1 * time.Minute) // sleep for 10 mins
+			time.Sleep(10 * time.Minute) // sleep for 10 mins
 			counter = counter + 1
 		}
 
@@ -126,7 +130,7 @@ func printNestedItems(cats []*gogtrends.ExploreCatTree) {
 	}
 }
 
-func saveData(items interface{}, fname string, scale float32) {
+func saveData(items interface{}, fname string, scaler map[string]float32, firstTime bool) {
 
 	// Read the existing address book.
 	in, err := ioutil.ReadFile(fname)
@@ -151,16 +155,18 @@ func saveData(items interface{}, fname string, scale float32) {
 		formattedAxisTime := ref.Index(i).Elem().FieldByName("FormattedAxisTime")
 		formattedValue := ref.Index(i).Elem().FieldByName("FormattedValue").Index(0)
 		formattedValueFloat, _ := strconv.ParseFloat(formattedValue.String(), 32)
-		log.Println(formattedValueFloat)
 		// hasData := ref.Index(i).Elem().FieldByName("hasData")
 
 		res := &TimelineData{}
 		res.Time = time.String()
 		res.FormattedAxisTime = formattedAxisTime.String()
+		scale, ok := scaler[time.String()]
+		if firstTime || ok == false {
+			scale = 1
+		}
 		res.FormattedValue = float32(formattedValueFloat) * scale
 
 		book.Data = append(book.Data, res)
-		log.Println(time, formattedAxisTime, formattedValue)
 	}
 	out, err := proto.Marshal(book)
 	if err != nil {
@@ -169,6 +175,7 @@ func saveData(items interface{}, fname string, scale float32) {
 	if err := ioutil.WriteFile(fname, out, 0644); err != nil {
 		log.Fatalln("Failed to write address book:", err)
 	}
+	log.Println("saved ", fname, " to disk.")
 }
 
 func fetchData(filename string) map[string]float32 {
@@ -183,19 +190,19 @@ func fetchData(filename string) map[string]float32 {
 		log.Fatalln("Failed to parse address book:", err)
 	}
 	for _, p := range book.Data {
-		log.Println(p.Time, p.FormattedAxisTime, p.FormattedValue)
+		// log.Println(p.Time, p.FormattedAxisTime, p.FormattedValue)
 		map_1[p.Time] = p.FormattedValue
 	}
 	return map_1
 }
 
-func scaleData(oldData map[string]float32, NewData interface{}) float32 {
-	mean := float32(0.0)
-	sum := float32(0.0)
-	elems := float32(0.0)
+func scaleData(oldData map[string]float32, NewData interface{}) map[string]float32 {
+	scale := make(map[string]float32)
+	// sum := float32(0.0)
+	// elems := float32(0.0)
 
 	ref := reflect.ValueOf(NewData)
-	var dataset [250]float32
+	// var dataset [250]float32
 	for i := 0; i < ref.Len(); i++ {
 		time := ref.Index(i).Elem().FieldByName("Time").String()
 		formattedValue := ref.Index(i).Elem().FieldByName("FormattedValue").Index(0)
@@ -203,20 +210,35 @@ func scaleData(oldData map[string]float32, NewData interface{}) float32 {
 		value, ok := oldData[time]
 		if ok {
 			if value != 0 {
-				delta := float32(formattedValueFloat) - value
-				dataset[0] = delta
+				log.Println(time, float32(formattedValueFloat), value)
+				if float32(formattedValueFloat) > 0 {
+					delta := value / float32(formattedValueFloat)
+					if delta > 0 {
+						scale[time] = delta
+					} else {
+						scale[time] = 1
+					}
+				}
+				// dataset[i] = delta
+				// log.Println(dataset)
+			} else {
+				scale[time] = 1
 			}
 		}
 	}
 
-	for i := 0; i < 250; i++ {
-		sum += dataset[i]
-		if dataset[i] > 0.0 {
-			elems += 1
-		}
-	}
+	// for i := 0; i < 250; i++ {
+	// 	sum += dataset[i]
+	// 	if dataset[i] > 0.0 {
+	// 		elems += 1
+	// 	}
+	// }
 
-	mean = sum / elems
-
-	return mean
+	// scale = sum / elems
+	// if scale > 0 {
+	// 	return scale
+	// } else {
+	// 	return 1.0
+	// }
+	return scale
 }
