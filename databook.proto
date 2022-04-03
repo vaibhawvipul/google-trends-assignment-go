@@ -1,0 +1,18 @@
+syntax = "proto3";
+package main;
+
+// [START go_declaration]
+option go_package = "./;main";
+// [END go_declaration]
+
+message TimelineData {
+  string FormattedAxisTime = 1;
+  string Time = 2;  // Unique ID number for this record.
+  bool HasData = 3;
+  float FormattedValue = 4;
+}
+
+// Our data book file is just one of these.
+message DataBook {
+  repeated TimelineData data = 1;
+}
